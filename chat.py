@@ -3,100 +3,88 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatOllama
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnablePassthrough
+import pandas as pd
+from langchain.embeddings import HuggingFaceEmbeddings
 
 # Initialisation des embeddings et de la base de données Chroma
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
-db = Chroma(persist_directory="./db-planet-mer", embedding_function=embeddings)
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+db = Chroma(persist_directory="./db-planet-mer", embedding_function=embedding_model)
 retriever = db.as_retriever(
     search_type="mmr",
-
-    search_kwargs={ 
+    search_kwargs={
         "k": 5,
-
-    },
-#     retriever = db.as_retriever(
-#     search_type="similarity",
-#     search_kwargs={ 
-#         "k": 5,
-#         "fetch_k": 20,                 # Récupère plus de candidats initiaux
-#         "lambda_mult": 0.7,            # Paramètre MMR pour l'équilibre pertinence/diversité
-#         "filter": {"metadata_field": "value"} # Filtre sur les métadonnées
-#     },
-#     hybrid_search_kwargs={  
-#         "alpha": 0.5,                  # Poids entre recherche vectorielle et par mots-clés  
-#         "boost_mode": "multiply"       # Mode de combinaison des scores
-#     }
-# )
-
+        "lambda_mult": 0.7,  # Paramètre MMR pour l'équilibre pertinence/diversité
+    }
 )
+
 # Configuration du modèle de langage
-llm = ChatOllama(model="llama3.2", keep_alive="3h", max_tokens=512, temperature=5)
+llm = ChatOllama(model="llama3.2", keep_alive="3h", max_tokens=512, temperature=0.3)
 
 # Template du prompt
 template = """<bos><start_of_turn>user
-Answer the question based only on the following context and provide a detailed, accurate response. Please write in full sentences with proper spelling and punctuation. If the context allows, use lists for clarity. 
-If the answer is not found within the context, kindly respond that you are unable to provide an answer.
-You are an expert fisherman with a deep understanding of marine biology and paleontology.
-Feel free to sprinkle in some humor and intriguing tidbits related to the world of fishing and ancient creatures!
+Answer the question based only on the following context and provide a detailed, accurate response...
 
-Your response should follow this format:
-1. Your detailed answer
-2. End your response with: "**Sources:** [List the document names/titles where you found this information]"
-
-CONTEXT: with your data, {context}
-
+CONTEXT: {context}
 QUESTION: {question}
-
-<end_of_turn>
-<start_of_turn>model
-ANSWER:"""
+"""
 
 prompt = ChatPromptTemplate.from_template(template)
 
-# Implémenter la memory pour améliorer la réponse
-
-# FAISS
-
+# Fonction pour formater les documents et extraire les sources
 def format_docs(docs):
-    formatted_docs = []
-    doc_titles = []
-    for doc in docs:
-        formatted_docs.append(doc.page_content)
-        if hasattr(doc.metadata, 'source'):
-            doc_titles.append(doc.metadata['source'])
+    formatted_docs = [doc.page_content for doc in docs]
+    sources = [doc.metadata.get('source', 'Source inconnue') for doc in docs]
+    return "\n\n".join(formatted_docs), sources
 
-    retriever = "\n\n".join(formatted_docs), doc_titles
-    print(retriever)
-    return retriever
-
-
+# Fonction pour générer la réponse avec les sources
 def generate_response_with_sources(retriever, question):
     docs = retriever.get_relevant_documents(question)
     context, sources = format_docs(docs)
     
-    chain_response = llm.invoke(
-        prompt.format(
-            context=context,
-            question=question
-        )
-    )
+    messages = [
+        {"role": "system", "content": "You are an expert marine biologist and fisherman."},
+        {"role": "user", "content": f"Context: {context}\n\nQuestion: {question}"}
+    ]
     
+    chain_response = llm.invoke(messages)
     response = chain_response.content
-    if sources:
-        response += f"\n\n**Sources:** {', '.join(sources)}"
-    else:
-        response += "\n\n**Sources:** Documentation interne Planète Mer"
     
-    return response
+    return response, sources
 
 # Configuration de la page Streamlit
 st.set_page_config(page_title="Planète Mer ChatBot", page_icon="🐠")
 
+# Ajout de styles personnalisés
+st.markdown("""
+    <style>
+        /* Messages de l'utilisateur */
+        .user-message {
+            background-color: #e3f2fd; /* Bleu clair */
+            color: #0d47a1; /* Texte bleu foncé */
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px 0;
+            max-width: 80%;
+            align-self: flex-end;
+        }
+
+        /* Messages de l'assistant */
+        .assistant-message {
+            background-color: #f1f8e9; /* Vert clair */
+            color: #33691e; /* Texte vert foncé */
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px 0;
+            max-width: 80%;
+            align-self: flex-start;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Initialisation des messages si pas déjà fait
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Bonjour! Je suis là pour répondre à vos questions sur la pêche et la vie marine. Comment puis-je vous aider? 🎣"}
+        {"role": "assistant", "content": ("Bonjour! Je suis là pour répondre à vos questions sur la pêche et la vie marine. Comment puis-je vous aider? 🎣", [])}
     ]
 
 # Sidebar avec historique
@@ -106,46 +94,46 @@ with st.sidebar:
     # Bouton pour effacer l'historique
     if st.button("Effacer l'historique"):
         st.session_state.messages = [
-            {"role": "assistant", "content": "Bonjour! Je suis là pour répondre à vos questions sur la pêche et la vie marine. Comment puis-je vous aider? 🎣"}
+            {"role": "assistant", "content": ("Bonjour! Je suis là pour répondre à vos questions sur la pêche et la vie marine. Comment puis-je vous aider? 🎣", [])}
         ]
     
     # Affichage de l'historique dans la sidebar
     st.markdown("### Historique des conversations")
-    
-    # Container pour l'historique avec scrolling
-    with st.container():
-        for i, message in enumerate(st.session_state.messages[1:]):  # Skip the first welcome message
-            # Créer un style condensé pour l'historique
-            if message["role"] == "user":
-                st.markdown("**😎 Vous:**")
-                st.markdown(f"{message['content'][:100]}..." if len(message['content']) > 100 else message['content'])
-            else:
-                st.markdown("**🤖 Assistant:**")
-                content = message['content']
-                # Tronquer le contenu et retirer les sources pour l'historique
-                if "**Sources:**" in content:
-                    content = content.split("**Sources:**")[0]
-                st.markdown(f"{content[:100]}..." if len(content) > 100 else content)
-            st.markdown("---")
+    for message in st.session_state.messages[1:]:  # Skip the first welcome message
+        if message["role"] == "user":
+            st.markdown(f"**😎 Vous:** {message['content'][:100]}...")
+        else:
+            response, _ = message["content"]
+            st.markdown(f"**🤖 Assistant:** {response[:100]}...")
 
 # Zone principale de chat
 st.title("Bonjour !")
 
 # Affichage des messages dans la zone principale
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    if message["role"] == "user":
+        st.markdown(f'<div class="user-message">{message["content"]}</div>', unsafe_allow_html=True)
+    elif message["role"] == "assistant":
+        # Gestion des réponses avec les sources
+        response, sources = message["content"]
+        st.markdown(f'<div class="assistant-message">{response}</div>', unsafe_allow_html=True)
+        if sources:
+            with st.expander("Sources"):
+                for source in sources:
+                    st.markdown(f"- [{source}]({source})")
 
 # Zone de chat
 if prompt := st.chat_input("Posez votre question ici..."):
     # Ajout du message utilisateur
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    st.markdown(f'<div class="user-message">{prompt}</div>', unsafe_allow_html=True)
     
     # Génération de la réponse
-    with st.chat_message("assistant"):
-        with st.spinner("Réflexion en cours..."):
-            response = generate_response_with_sources(retriever, prompt)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.markdown(response)
+    with st.spinner("Réflexion en cours..."):
+        response, sources = generate_response_with_sources(retriever, prompt)
+        st.session_state.messages.append({"role": "assistant", "content": (response, sources)})
+        st.markdown(f'<div class="assistant-message">{response}</div>', unsafe_allow_html=True)
+        if sources:
+            with st.expander("Sources"):
+                for source in sources:
+                    st.markdown(f"- [{source}]({source})")
