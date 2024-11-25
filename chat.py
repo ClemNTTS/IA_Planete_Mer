@@ -1,10 +1,8 @@
 import streamlit as st
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatOllama
 from langchain.prompts import ChatPromptTemplate
-import pandas as pd
-from langchain.embeddings import HuggingFaceEmbeddings
 
 # Initialisation des embeddings et de la base de données Chroma
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -38,16 +36,21 @@ def format_docs(docs):
 
 # Fonction pour générer la réponse avec les sources
 def generate_response_with_sources(retriever, question):
-    docs = retriever.get_relevant_documents(question)
-    context, sources = format_docs(docs)
-    
-    messages = [
-        {"role": "system", "content": "You are an expert marine biologist and fisherman."},
-        {"role": "user", "content": f"Context: {context}\n\nQuestion: {question}"}
-    ]
-    
-    chain_response = llm.invoke(messages)
-    response = chain_response.content
+    try:
+        docs = retriever.get_relevant_documents(question)
+        context, sources = format_docs(docs)
+    except Exception as e:
+        return f"Erreur lors de la récupération des documents : {e}", []
+
+    try:
+        messages = [
+            {"role": "system", "content": "You are an expert marine biologist and fisherman."},
+            {"role": "user", "content": f"Context: {context}\n\nQuestion: {question}"}
+        ]
+        chain_response = llm.invoke(messages)
+        response = chain_response.content
+    except Exception as e:
+        return f"Erreur lors de la génération de la réponse : {e}", []
     
     return response, sources
 
@@ -114,21 +117,18 @@ for message in st.session_state.messages:
     if message["role"] == "user":
         st.markdown(f'<div class="user-message">{message["content"]}</div>', unsafe_allow_html=True)
     elif message["role"] == "assistant":
-        # Gestion des réponses avec les sources
         response, sources = message["content"]
         st.markdown(f'<div class="assistant-message">{response}</div>', unsafe_allow_html=True)
         if sources:
             with st.expander("Sources"):
                 for source in sources:
-                    st.markdown(f"- [{source}]({source})")
+                    st.markdown(f"- {source}")
 
 # Zone de chat
 if prompt := st.chat_input("Posez votre question ici..."):
-    # Ajout du message utilisateur
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(f'<div class="user-message">{prompt}</div>', unsafe_allow_html=True)
-    
-    # Génération de la réponse
+
     with st.spinner("Réflexion en cours..."):
         response, sources = generate_response_with_sources(retriever, prompt)
         st.session_state.messages.append({"role": "assistant", "content": (response, sources)})
@@ -136,4 +136,4 @@ if prompt := st.chat_input("Posez votre question ici..."):
         if sources:
             with st.expander("Sources"):
                 for source in sources:
-                    st.markdown(f"- [{source}]({source})")
+                    st.markdown(f"- {source}")
