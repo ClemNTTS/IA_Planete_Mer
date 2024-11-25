@@ -1,8 +1,25 @@
+import os
 import streamlit as st
+import google.generativeai as genai
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_community.chat_models import ChatOllama
-from langchain.prompts import ChatPromptTemplate
+
+# Configuration de l'API Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Configuration du modèle Gemini
+generation_config = {
+    "temperature": 0.3,
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 8192,
+    "response_mime_type": "text/plain",
+}
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    generation_config=generation_config,
+)
 
 # Initialisation des embeddings et de la base de données Chroma
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -11,48 +28,39 @@ retriever = db.as_retriever(
     search_type="mmr",
     search_kwargs={
         "k": 5,
-        "lambda_mult": 0.7,  # Paramètre MMR pour l'équilibre pertinence/diversité
+        "lambda_mult": 0.7,
     }
 )
 
-# Configuration du modèle de langage
-llm = ChatOllama(model="llama3.2", keep_alive="3h", max_tokens=512, temperature=0.3)
+# Template du prompt pour Gemini
+template = """Context: {context}
 
-# Template du prompt
-template = """<bos><start_of_turn>user
-Answer the question based only on the following context and provide a detailed, accurate response...
-
-CONTEXT: {context}
-QUESTION: {question}
-"""
-
-prompt = ChatPromptTemplate.from_template(template)
+Question: {question}"""
 
 # Fonction pour formater les documents et extraire les sources
 def format_docs(docs):
     formatted_docs = [doc.page_content for doc in docs]
-    sources = [doc.metadata.get('source', 'Source inconnue') for doc in docs]
+    sources = [doc.metadata.get("source", "Source inconnue") for doc in docs]
     return "\n\n".join(formatted_docs), sources
 
 # Fonction pour générer la réponse avec les sources
 def generate_response_with_sources(retriever, question):
     try:
+        # Récupération des documents pertinents
         docs = retriever.get_relevant_documents(question)
         context, sources = format_docs(docs)
     except Exception as e:
         return f"Erreur lors de la récupération des documents : {e}", []
 
     try:
-        messages = [
-            {"role": "system", "content": "You are an expert marine biologist and fisherman."},
-            {"role": "user", "content": f"Context: {context}\n\nQuestion: {question}"}
-        ]
-        chain_response = llm.invoke(messages)
-        response = chain_response.content
+        # Créer une session de chat et envoyer la requête
+        chat_session = model.start_chat(history=[])
+        full_prompt = f"Veuillez répondre en français.\n\n{template.format(context=context, question=question)}"
+        response = chat_session.send_message(full_prompt)
     except Exception as e:
         return f"Erreur lors de la génération de la réponse : {e}", []
-    
-    return response, sources
+
+    return response.text, sources
 
 # Configuration de la page Streamlit
 st.set_page_config(page_title="Planète Mer ChatBot", page_icon="🐠")
@@ -60,21 +68,18 @@ st.set_page_config(page_title="Planète Mer ChatBot", page_icon="🐠")
 # Ajout de styles personnalisés
 st.markdown("""
     <style>
-        /* Messages de l'utilisateur */
         .user-message {
-            background-color: #e3f2fd; /* Bleu clair */
-            color: #0d47a1; /* Texte bleu foncé */
+            background-color: #e3f2fd;
+            color: #0d47a1;
             padding: 10px;
             border-radius: 10px;
             margin: 5px 0;
             max-width: 80%;
             align-self: flex-end;
         }
-
-        /* Messages de l'assistant */
         .assistant-message {
-            background-color: #f1f8e9; /* Vert clair */
-            color: #33691e; /* Texte vert foncé */
+            background-color: #f1f8e9;
+            color: #33691e;
             padding: 10px;
             border-radius: 10px;
             margin: 5px 0;
@@ -100,9 +105,9 @@ with st.sidebar:
             {"role": "assistant", "content": ("Bonjour! Je suis là pour répondre à vos questions sur la pêche et la vie marine. Comment puis-je vous aider? 🎣", [])}
         ]
     
-    # Affichage de l'historique dans la sidebar
+    # Affichage de l'historique
     st.markdown("### Historique des conversations")
-    for message in st.session_state.messages[1:]:  # Skip the first welcome message
+    for message in st.session_state.messages[1:]:
         if message["role"] == "user":
             st.markdown(f"**😎 Vous:** {message['content'][:100]}...")
         else:
@@ -112,7 +117,7 @@ with st.sidebar:
 # Zone principale de chat
 st.title("Bonjour !")
 
-# Affichage des messages dans la zone principale
+# Affichage des messages
 for message in st.session_state.messages:
     if message["role"] == "user":
         st.markdown(f'<div class="user-message">{message["content"]}</div>', unsafe_allow_html=True)
@@ -124,7 +129,7 @@ for message in st.session_state.messages:
                 for source in sources:
                     st.markdown(f"- {source}")
 
-# Zone de chat
+# Zone de saisie utilisateur
 if prompt := st.chat_input("Posez votre question ici..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(f'<div class="user-message">{prompt}</div>', unsafe_allow_html=True)
