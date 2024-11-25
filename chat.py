@@ -1,9 +1,7 @@
 import streamlit as st
-from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatOllama
 from langchain.prompts import ChatPromptTemplate
-import pandas as pd
 from langchain.embeddings import HuggingFaceEmbeddings
 
 # Initialisation des embeddings et de la base de données Chroma
