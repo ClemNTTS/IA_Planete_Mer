@@ -1,6 +1,7 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain.document_loaders import DirectoryLoader
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import Chroma
 from langchain.schema import Document  # Import nécessaire pour créer des objets Document
 
 import os
@@ -55,7 +56,6 @@ vectorstore = Chroma.from_documents(
     embedding=embedding_model,
     persist_directory="./db-planet-mer"  # Chemin où persister les embeddings
 )
-vectorstore.persist()
 print("Vectorstore créé et persisté.")
 
 # Étape 5 : Charger la base de données pour vérification
