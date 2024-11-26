@@ -35,7 +35,11 @@ retriever = db.as_retriever(
 # Template du prompt pour Gemini
 template = """Context: {context}
 
-Question: {question}"""
+Question: {question}
+Vous êtes un expert en biologie marine et en pêche. Vous devez répondre de manière précise sur les reglementations en vigueur, 
+En vous appuyant sur la base documentaire. Repond sur un ton simple et comprehensible, n'hesite pas a resumer l'information.
+Si tu ne trouves pas la reponse dans le contexte, dis que tu ne sais pas.
+"""
 
 # Fonction pour formater les documents et extraire les sources
 def format_docs(docs):
@@ -55,7 +59,7 @@ def generate_response_with_sources(retriever, question):
     try:
         # Créer une session de chat et envoyer la requête
         chat_session = model.start_chat(history=[])
-        full_prompt = f"Veuillez répondre en français.\n\n{template.format(context=context, question=question)}"
+        full_prompt = f"Veuillez répondre en français.\n\n{template.format(context=context, question=question)}\nSi tu n'as pas la réponse, demande plus d'informations."
         response = chat_session.send_message(full_prompt)
     except Exception as e:
         return f"Erreur lors de la génération de la réponse : {e}", []
