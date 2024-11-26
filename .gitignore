@@ -1,2 +1,5 @@
 /hackaton
 /db-planet-mer
+/data
+/__pycache__
+/myenv
