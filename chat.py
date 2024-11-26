@@ -65,6 +65,14 @@ def generate_response_with_sources(retriever, question):
 # Configuration de la page Streamlit
 st.set_page_config(page_title="Planète Mer ChatBot", page_icon="🐠")
 
+
+logo_path = "img\logo.png"
+
+# In the provided Python code, the `st` object is being used as part of the Streamlit library.
+# Streamlit is a popular Python library used for creating web applications with interactive elements,
+# visualizations, and data displays directly from Python scripts.
+st.sidebar.image(logo_path, width=150)
+
 # Ajout de styles personnalisés
 st.markdown("""
     <style>
@@ -109,7 +117,7 @@ with st.sidebar:
     st.markdown("### Historique des conversations")
     for message in st.session_state.messages[1:]:
         if message["role"] == "user":
-            st.markdown(f"**😎 Vous:** {message['content'][:100]}...")
+            st.markdown(f"**😄 Vous:** {message['content'][:100]}...")
         else:
             response, _ = message["content"]
             st.markdown(f"**🤖 Assistant:** {response[:100]}...")

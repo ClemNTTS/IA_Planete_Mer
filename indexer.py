@@ -1,3 +1,5 @@
+from pdf2image import convert_from_path
+import pytesseract
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import DirectoryLoader
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -27,7 +29,11 @@ for filename in os.listdir(folder_path):
             text = ""
             for page_num in range(len(reader.pages)):
                 page = reader.pages[page_num]
-                text += page.extract_text()  # Extraire le texte de la page
+                if len(page.extract_text()) == 0:
+                    images = convert_from_path()
+                    text += "\n".join(pytesseract.image_to_string(img, lang='fra') for img in images)
+                else:    
+                    text += page.extract_text()  # Extraire le texte de la page
             
             # Créer un objet Document avec le texte extrait
             document = Document(page_content=text, metadata={"source": file_path})
